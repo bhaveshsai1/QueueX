@@ -21,7 +21,15 @@ export default function WaitingRoomDisplayPage() {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [currentTime, setCurrentTime] = useState<string>("");
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [lastCalledMap, setLastCalledMap] = useState<Record<string, string>>({});
+
+  function unlockAudio() {
+    if (!audioUnlocked) {
+      playHospitalChime();
+      setAudioUnlocked(true);
+    }
+  }
 
   useEffect(() => {
     updateClock();
@@ -32,7 +40,11 @@ export default function WaitingRoomDisplayPage() {
   useEffect(() => {
     loadData();
     const pollTimer = setInterval(loadData, 3000);
-    return () => clearInterval(pollTimer);
+    window.addEventListener("opd-refresh", loadData);
+    return () => {
+      clearInterval(pollTimer);
+      window.removeEventListener("opd-refresh", loadData);
+    };
   }, []);
 
   function updateClock() {
@@ -65,7 +77,18 @@ export default function WaitingRoomDisplayPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-6 sm:p-8 flex flex-col justify-between select-none">
+    <div
+      onClick={unlockAudio}
+      className="min-h-screen bg-slate-950 text-white p-6 sm:p-8 flex flex-col justify-between select-none cursor-pointer"
+    >
+      {/* Audio Unlock Banner */}
+      {!audioUnlocked && (
+        <div className="mb-4 p-2.5 rounded-2xl bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 border border-emerald-500/40 text-emerald-300 text-xs font-bold text-center flex items-center justify-center space-x-2 animate-pulse">
+          <Volume2 className="w-4 h-4 text-emerald-400" />
+          <span>🔊 Hospital Audio System Ready — Tap anywhere on screen to enable live chimes & voice announcements</span>
+        </div>
+      )}
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-800 gap-4">
         <div className="flex items-center space-x-4">

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { seedSimulation, getNotifications, NotificationAlert } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useRealtimeQueue } from "@/lib/use-realtime";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -33,6 +34,11 @@ export default function Navbar() {
   const [seeding, setSeeding] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [authDropdown, setAuthDropdown] = useState(false);
+
+  // Connect to Realtime WebSocket for 0ms queue updates
+  useRealtimeQueue(() => {
+    fetchNotifications();
+  });
 
   useEffect(() => {
     fetchNotifications();

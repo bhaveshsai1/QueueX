@@ -70,8 +70,17 @@ def health_check():
     return {
         "status": "online",
         "service": "Smart OPD Adaptive Queue System",
-        "firebase_connected": firebase_manager.is_connected
+        "firebase_connected": firebase_manager.is_connected,
+        "firebase_mode": firebase_manager.get_status_info()["mode"]
     }
+
+@app.get("/api/firebase/status")
+def get_firebase_status():
+    return firebase_manager.get_status_info()
+
+@app.post("/api/firebase/sync")
+def sync_firebase_data():
+    return firebase_manager.sync_to_firestore(overwrite_existing=True)
 
 # ----------------- AUTHENTICATION ROUTES ----------------- #
 
@@ -302,6 +311,14 @@ async def mark_token_missed(token_id: str):
     await notify_clients("TOKEN_MISSED", {"token_id": token_id})
     return {"success": True, "notification": notif}
 
+@app.post("/api/tokens/{token_id}/recall")
+async def recall_token(token_id: str):
+    token, notifs = queue_engine.recall_token(token_id)
+    if not token:
+        raise HTTPException(status_code=404, detail="Token not found")
+    await notify_clients("TOKEN_RECALLED", {"token_id": token_id, "doctor_id": token.doctor_id})
+    return {"success": True, "token": token, "notifications": notifs}
+
 @app.get("/api/notifications")
 def get_notifications(limit: int = 30):
     return firebase_manager.get_notifications(limit)
@@ -423,15 +440,7 @@ async def seed_simulation_data():
 
 @app.post("/api/simulation/reset")
 async def reset_simulation_data():
-    firebase_manager.local_data["tokens"] = []
-    firebase_manager.local_data["notifications"] = []
-    for d in firebase_manager.local_data["doctors"]:
-        d["status"] = DoctorStatus.AVAILABLE
-        d["delay_minutes"] = 0
-        d["delay_reason"] = None
-        d["current_token_id"] = None
-        d["consultation_start_time"] = None
-    firebase_manager._save_local()
+    firebase_manager.reset_all()
     await notify_clients("SIMULATION_RESET", {})
     return {"success": True, "message": "OPD Queue state reset."}
 

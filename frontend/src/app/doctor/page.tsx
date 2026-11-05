@@ -23,6 +23,7 @@ import {
   Lock,
   LogOut,
   Building,
+  RotateCcw,
 } from "lucide-react";
 import {
   getDoctors,
@@ -33,6 +34,7 @@ import {
   reportDoctorDelay,
   resumeDoctorQueue,
   markTokenMissed,
+  recallToken,
   triggerEmergencyPreemption,
 } from "@/lib/api";
 import { playHospitalChime, speakAnnouncement } from "@/lib/sound";
@@ -45,6 +47,7 @@ export default function DoctorConsolePage() {
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>("");
   const [currentDoctor, setCurrentDoctor] = useState<Doctor | null>(null);
   const [queueTokens, setQueueTokens] = useState<Token[]>([]);
+  const [missedTokens, setMissedTokens] = useState<Token[]>([]);
   const [activeToken, setActiveToken] = useState<Token | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -78,7 +81,11 @@ export default function DoctorConsolePage() {
     if (!selectedDoctorId) return;
     loadQueue();
     const interval = setInterval(loadQueue, 3500);
-    return () => clearInterval(interval);
+    window.addEventListener("opd-refresh", loadQueue);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("opd-refresh", loadQueue);
+    };
   }, [selectedDoctorId]);
 
   // Consultation timer tick
@@ -125,8 +132,23 @@ export default function DoctorConsolePage() {
         .sort((a, b) => a.queue_position - b.queue_position);
 
       setQueueTokens(waiting);
+
+      const missed = allTokens.filter((t) => t.status === "MISSED");
+      setMissedTokens(missed);
     } catch (e) {
       console.error(e);
+    }
+  }
+
+  async function handleRecall(tokenId: string) {
+    setActionLoading(true);
+    try {
+      await recallToken(tokenId);
+      await loadQueue();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setActionLoading(false);
     }
   }
 
@@ -527,6 +549,45 @@ export default function DoctorConsolePage() {
               </div>
             )}
           </div>
+
+          {/* Missed Patients (No-Show) & Recall Section */}
+          {missedTokens.length > 0 && (
+            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-rose-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-rose-700 font-bold text-sm">
+                  <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  <span>Missed / Skipped Patients ({missedTokens.length})</span>
+                </div>
+                <span className="text-[11px] text-slate-500">Patient arrived late? Tap recall</span>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {missedTokens.map((t) => (
+                  <div key={t.id} className="py-3 flex items-center justify-between text-xs">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono font-bold text-sm text-slate-900">{t.token_number}</span>
+                        <span className="font-semibold text-slate-800">{t.patient.name}</span>
+                        <span className="text-slate-500">({t.patient.phone})</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Skipped earlier • {t.patient.symptoms || "Consultation"}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleRecall(t.id)}
+                      disabled={actionLoading}
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition flex items-center space-x-1"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Recall to Queue</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Sidebar: Dynamic Delay Management */}
@@ -565,6 +626,15 @@ export default function DoctorConsolePage() {
                 +30 Mins Delay
               </button>
             </div>
+
+            <button
+              onClick={() => setShowDelayModal(true)}
+              disabled={actionLoading}
+              className="w-full p-2.5 rounded-xl border border-slate-300 hover:border-slate-400 hover:bg-slate-50 font-bold text-xs text-slate-700 transition flex items-center justify-center space-x-1.5"
+            >
+              <Clock className="w-3.5 h-3.5 text-slate-500" />
+              <span>Custom Delay Duration & Reason...</span>
+            </button>
 
             <button
               onClick={() => handleDelay(45, "Emergency trauma surgery called. Queue on hold.")}
@@ -690,6 +760,75 @@ export default function DoctorConsolePage() {
                   className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition"
                 >
                   Preempt Queue Now
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Delay Modal Dialog */}
+      {showDelayModal && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 space-y-6 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center space-x-2 text-amber-600">
+              <Clock className="w-6 h-6" />
+              <h3 className="font-bold text-lg text-slate-900">Broadcast Custom Schedule Delay</h3>
+            </div>
+            <p className="text-xs text-slate-500">
+              Specify the exact delay duration and reason. All waiting patient mobile trackers and TV displays will update dynamically.
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleDelay(customDelayMins, customDelayReason);
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Delay Duration (Minutes) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min={5}
+                  max={180}
+                  value={customDelayMins}
+                  onChange={(e) => setCustomDelayMins(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Clinical Delay Reason / Notice *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={customDelayReason}
+                  onChange={(e) => setCustomDelayReason(e.target.value)}
+                  placeholder="e.g. Attending emergency C-section / ICU round"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDelayModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md transition"
+                >
+                  Broadcast Delay to Patients
                 </button>
               </div>
             </form>

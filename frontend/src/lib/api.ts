@@ -144,6 +144,7 @@ export async function getToken(tokenId: string): Promise<{ token: Token; doctor:
 }
 
 export async function checkInPatient(data: {
+  user_id?: string;
   name: string;
   age: number;
   gender: string;
@@ -226,6 +227,13 @@ export async function markTokenMissed(tokenId: string): Promise<{ success: boole
   return handleResponse(res);
 }
 
+export async function recallToken(tokenId: string): Promise<{ success: boolean; token: Token }> {
+  const res = await fetch(`${API_BASE}/api/tokens/${tokenId}/recall`, {
+    method: "POST",
+  });
+  return handleResponse(res);
+}
+
 export async function getNotifications(limit: number = 30): Promise<NotificationAlert[]> {
   const res = await fetch(`${API_BASE}/api/notifications?limit=${limit}`, { cache: "no-store" });
   return handleResponse<NotificationAlert[]>(res);
@@ -295,6 +303,28 @@ export async function getPatientTokens(userId?: string, phone?: string): Promise
   if (phone) params.append("phone", phone);
   const res = await fetch(`${API_BASE}/api/patient/tokens?${params.toString()}`, { cache: "no-store" });
   return handleResponse<Token[]>(res);
+}
+
+export interface FirebaseStatusInfo {
+  is_connected: boolean;
+  mode: string;
+  project_id?: string | null;
+  credential_source?: string | null;
+  data_file?: string | null;
+  departments_count: number;
+  doctors_count: number;
+  tokens_count: number;
+  users_count: number;
+}
+
+export async function getFirebaseStatus(): Promise<FirebaseStatusInfo> {
+  const res = await fetch(`${API_BASE}/api/firebase/status`, { cache: "no-store" });
+  return handleResponse<FirebaseStatusInfo>(res);
+}
+
+export async function syncFirebase(): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/api/firebase/sync`, { method: "POST" });
+  return handleResponse<{ success: boolean; message: string }>(res);
 }
 
 

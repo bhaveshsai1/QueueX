@@ -29,8 +29,10 @@ import {
   Token,
 } from "@/lib/api";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth-context";
 
 export default function KioskPage() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"walkin" | "prebooked">("walkin");
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,6 +45,22 @@ export default function KioskPage() {
   const [departmentId, setDepartmentId] = useState("");
   const [priority, setPriority] = useState<TriagePriority>("NORMAL");
   const [symptoms, setSymptoms] = useState("");
+
+  // Host configuration for QR code scanning (phone on same Wi-Fi)
+  const [customHost, setCustomHost] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCustomHost(window.location.origin);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      if (user.name) setName(user.name);
+      if (user.phone) setPhone(user.phone);
+    }
+  }, [user]);
 
   // Pre-booked fast check-in
   const [appointmentId, setAppointmentId] = useState("APP-8842");
@@ -72,6 +90,7 @@ export default function KioskPage() {
     setLoading(true);
     try {
       const res = await checkInPatient({
+        user_id: user?.id,
         name,
         age: Number(age),
         gender,
@@ -85,7 +104,8 @@ export default function KioskPage() {
       setGeneratedToken(res.token);
 
       // Generate QR Code for live smartphone tracking
-      const trackerUrl = `${window.location.origin}/track/${res.token.id}`;
+      const baseUrl = customHost || window.location.origin;
+      const trackerUrl = `${baseUrl}/track/${res.token.id}`;
       const qr = await QRCode.toDataURL(trackerUrl, { width: 220, margin: 1 });
       setQrDataUrl(qr);
 
@@ -111,10 +131,11 @@ export default function KioskPage() {
     try {
       // In real deployment, retrieves slot details; here we create interleaved token
       const res = await checkInPatient({
-        name: name || "Verified Online Patient",
+        user_id: user?.id,
+        name: name || user?.name || "Verified Online Patient",
         age: Number(age) || 35,
         gender: "Female",
-        phone: phone || "+91 98765 43210",
+        phone: phone || user?.phone || "+91 98765 43210",
         department_id: departmentId || (departments[0]?.id ?? "dept-cardio"),
         priority: "SCHEDULED",
         slot_type: "ONLINE_BOOKED",
@@ -125,7 +146,8 @@ export default function KioskPage() {
 
       setGeneratedToken(res.token);
 
-      const trackerUrl = `${window.location.origin}/track/${res.token.id}`;
+      const baseUrl = customHost || window.location.origin;
+      const trackerUrl = `${baseUrl}/track/${res.token.id}`;
       const qr = await QRCode.toDataURL(trackerUrl, { width: 220, margin: 1 });
       setQrDataUrl(qr);
 
@@ -229,7 +251,20 @@ export default function KioskPage() {
               )}
               <div className="space-y-1">
                 <p className="text-xs font-bold text-slate-900">Scan to Track on Smartphone</p>
-                <p className="text-[11px] text-slate-500">Live dynamic ETA updates & WhatsApp notifications</p>
+                <p className="text-[11px] text-slate-500">Live dynamic ETA updates & native device alerts</p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const newHost = customHost.includes("172.18.3.25") ? window.location.origin : "http://172.18.3.25:3000";
+                    setCustomHost(newHost);
+                    const trackerUrl = `${newHost}/track/${generatedToken.id}`;
+                    const qr = await QRCode.toDataURL(trackerUrl, { width: 220, margin: 1 });
+                    setQrDataUrl(qr);
+                  }}
+                  className="inline-block mt-1 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold hover:bg-emerald-100 transition"
+                >
+                  {customHost.includes("172.18.3.25") ? "Using Wi-Fi IP (Tap for Localhost)" : "Tap to Switch QR to Phone Wi-Fi IP"}
+                </button>
               </div>
 
               <Link

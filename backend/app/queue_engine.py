@@ -312,5 +312,16 @@ class QueueEngine:
             return notif
         return None
 
+    def recall_token(self, token_id: str) -> Tuple[Optional[Token], List[NotificationAlert]]:
+        tok_data = self.fb.get_token(token_id)
+        if not tok_data:
+            return None, []
+        token = Token(**tok_data)
+        token.status = TokenStatus.WAITING
+        self.fb.save_token(token.model_dump())
+        notifs = self.recalculate_doctor_queue(token.doctor_id)
+        updated = Token(**self.fb.get_token(token_id))
+        return updated, notifs
+
 queue_engine = QueueEngine()
 

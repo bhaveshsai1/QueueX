@@ -1,0 +1,17 @@
+{
+  "name": "Smart OPD - Adaptive Virtual Queue",
+  "short_name": "Smart OPD",
+  "description": "Hospital Outpatient Department Smart Queue and Live Token Tracker",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}
+
