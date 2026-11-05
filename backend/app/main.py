@@ -22,13 +22,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS setup for Next.js frontend
+# CORS setup for Next.js frontend across any domain (Vercel, Render, Localhost, Mobile)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # WebSocket Connection Manager for Realtime Broadcasts
@@ -194,15 +195,15 @@ def get_current_user(authorization: Optional[str] = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization Header")
     
-    # Parse format "Bearer auth-<user_id>-<token>"
-    parts = authorization.replace("Bearer ", "").split("-")
-    if len(parts) < 3 or parts[0] != "auth":
+    clean_token = authorization.replace("Bearer ", "").strip()
+    if not clean_token.startswith("auth-"):
         raise HTTPException(status_code=401, detail="Invalid token format")
     
-    user_id = f"{parts[1]}-{parts[2]}" if len(parts) >= 4 else parts[1]
+    body = clean_token[5:]  # remove "auth-" prefix
+    user_id = body.rsplit("-", 1)[0] if "-" in body else body
     user_data = firebase_manager.get_user_by_id(user_id)
     if not user_data:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail=f"User {user_id} not found")
     
     return User(
         id=user_data["id"],

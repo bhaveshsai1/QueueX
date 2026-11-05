@@ -28,26 +28,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Restore session from localStorage
+    // Restore session immediately from localStorage for zero-delay UX
     try {
       const savedToken = localStorage.getItem("opd_auth_token");
       const savedUser = localStorage.getItem("opd_auth_user");
       if (savedToken && savedUser) {
+        const parsed = JSON.parse(savedUser);
         setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-        // Verify with backend
+        setUser(parsed);
+
+        // Verify/refresh user state with backend in background
         getCurrentUser(savedToken)
           .then((verified) => {
             setUser(verified);
             localStorage.setItem("opd_auth_user", JSON.stringify(verified));
           })
-          .catch(() => {
-            // Token expired or invalid
-            logout();
+          .catch((err) => {
+            // Only wipe session if the server explicitly rejected the token as invalid/expired (401)
+            // Never wipe session on network timeouts, CORS errors, or sleeping Render free tier!
+            const errMsg = String(err?.message || "");
+            if (errMsg.includes("401") || errMsg.includes("Invalid token")) {
+              logout();
+            } else {
+              console.warn("Background auth refresh deferred (backend sleeping or unreachable):", err);
+            }
           });
       }
     } catch (e) {
-      console.error(e);
+      console.error("Auth restoration error:", e);
     } finally {
       setIsLoading(false);
     }
@@ -102,11 +110,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useAuth() {
+export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }
-

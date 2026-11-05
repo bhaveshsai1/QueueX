@@ -1,5 +1,12 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-export const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws/queue";
+const rawApi = typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_API_URL || "") : "";
+export const API_BASE = rawApi.trim().replace(/\/+$/, "") || "http://localhost:8000";
+
+const rawWs = typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_WS_URL || "") : "";
+export const WS_BASE = rawWs.trim().replace(/\/+$/, "") || (
+  API_BASE.startsWith("https://")
+    ? API_BASE.replace("https://", "wss://") + "/ws/queue"
+    : API_BASE.replace("http://", "ws://") + "/ws/queue"
+);
 
 export type UserRole = "PATIENT" | "DOCTOR" | "ADMIN";
 
@@ -109,8 +116,14 @@ export interface QueueStats {
 // API methods
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(errorText || `Request failed with status ${res.status}`);
+    let errorDetail = "";
+    try {
+      const data = await res.json();
+      errorDetail = data.detail || data.message || JSON.stringify(data);
+    } catch {
+      errorDetail = await res.text().catch(() => "");
+    }
+    throw new Error(errorDetail || `Request failed with status ${res.status}`);
   }
   return res.json();
 }
@@ -326,5 +339,3 @@ export async function syncFirebase(): Promise<{ success: boolean; message: strin
   const res = await fetch(`${API_BASE}/api/firebase/sync`, { method: "POST" });
   return handleResponse<{ success: boolean; message: string }>(res);
 }
-
-
