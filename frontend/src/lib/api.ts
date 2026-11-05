@@ -1,12 +1,50 @@
-const rawApi = typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_API_URL || "") : "";
-export const API_BASE = rawApi.trim().replace(/\/+$/, "") || "http://localhost:8000";
+export function getApiBase(): string {
+  if (typeof window !== "undefined") {
+    const custom = localStorage.getItem("opd_backend_url");
+    if (custom && custom.trim()) {
+      return custom.trim().replace(/\/+$/, "");
+    }
+  }
+  const rawApi = typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_API_URL || "") : "";
+  return rawApi.trim().replace(/\/+$/, "") || "http://localhost:8000";
+}
 
-const rawWs = typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_WS_URL || "") : "";
-export const WS_BASE = rawWs.trim().replace(/\/+$/, "") || (
-  API_BASE.startsWith("https://")
-    ? API_BASE.replace("https://", "wss://") + "/ws/queue"
-    : API_BASE.replace("http://", "ws://") + "/ws/queue"
-);
+export function setCustomApiBase(url: string) {
+  if (typeof window !== "undefined") {
+    if (!url || !url.trim()) {
+      localStorage.removeItem("opd_backend_url");
+    } else {
+      localStorage.setItem("opd_backend_url", url.trim().replace(/\/+$/, ""));
+    }
+    window.dispatchEvent(new Event("opd-api-change"));
+  }
+}
+
+export function getWsBase(): string {
+  if (typeof window !== "undefined") {
+    const customWs = localStorage.getItem("opd_ws_url");
+    if (customWs && customWs.trim()) {
+      return customWs.trim().replace(/\/+$/, "");
+    }
+  }
+  const rawWs = typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_WS_URL || "") : "";
+  if (rawWs.trim()) {
+    return rawWs.trim().replace(/\/+$/, "");
+  }
+  const base = getApiBase();
+  return base.startsWith("https://")
+    ? base.replace("https://", "wss://") + "/ws/queue"
+    : base.replace("http://", "ws://") + "/ws/queue";
+}
+
+export function apiUrl(path: string): string {
+  const base = getApiBase();
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${cleanPath}`;
+}
+
+export const API_BASE = getApiBase();
+export const WS_BASE = getWsBase();
 
 export type UserRole = "PATIENT" | "DOCTOR" | "ADMIN";
 
@@ -128,18 +166,23 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json();
 }
 
+export async function checkBackendHealth(): Promise<{ status: string; service: string; firebase_connected?: boolean }> {
+  const res = await fetch(apiUrl("/"), { cache: "no-store" });
+  return handleResponse(res);
+}
+
 export async function getDepartments(): Promise<Department[]> {
-  const res = await fetch(`${API_BASE}/api/departments`, { cache: "no-store" });
+  const res = await fetch(apiUrl("/api/departments"), { cache: "no-store" });
   return handleResponse<Department[]>(res);
 }
 
 export async function getDoctors(): Promise<Doctor[]> {
-  const res = await fetch(`${API_BASE}/api/doctors`, { cache: "no-store" });
+  const res = await fetch(apiUrl("/api/doctors"), { cache: "no-store" });
   return handleResponse<Doctor[]>(res);
 }
 
 export async function getDoctor(id: string): Promise<Doctor> {
-  const res = await fetch(`${API_BASE}/api/doctors/${id}`, { cache: "no-store" });
+  const res = await fetch(apiUrl(`/api/doctors/${id}`), { cache: "no-store" });
   return handleResponse<Doctor>(res);
 }
 
@@ -147,12 +190,12 @@ export async function getTokens(departmentId?: string, doctorId?: string): Promi
   const params = new URLSearchParams();
   if (departmentId) params.append("department_id", departmentId);
   if (doctorId) params.append("doctor_id", doctorId);
-  const res = await fetch(`${API_BASE}/api/tokens?${params.toString()}`, { cache: "no-store" });
+  const res = await fetch(apiUrl(`/api/tokens?${params.toString()}`), { cache: "no-store" });
   return handleResponse<Token[]>(res);
 }
 
 export async function getToken(tokenId: string): Promise<{ token: Token; doctor: Doctor | null }> {
-  const res = await fetch(`${API_BASE}/api/tokens/${tokenId}`, { cache: "no-store" });
+  const res = await fetch(apiUrl(`/api/tokens/${tokenId}`), { cache: "no-store" });
   return handleResponse<{ token: Token; doctor: Doctor | null }>(res);
 }
 
@@ -170,7 +213,7 @@ export async function checkInPatient(data: {
   booked_time?: string;
   symptoms?: string;
 }): Promise<{ token: Token; notifications: NotificationAlert[] }> {
-  const res = await fetch(`${API_BASE}/api/tokens/checkin`, {
+  const res = await fetch(apiUrl("/api/tokens/checkin"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -183,7 +226,7 @@ export async function callNextPatient(doctorId: string): Promise<{
   current_token: Token | null;
   notifications: NotificationAlert[];
 }> {
-  const res = await fetch(`${API_BASE}/api/doctors/${doctorId}/call-next`, {
+  const res = await fetch(apiUrl(`/api/doctors/${doctorId}/call-next`), {
     method: "POST",
   });
   return handleResponse(res);
@@ -194,7 +237,7 @@ export async function reportDoctorDelay(
   delayMinutes: number,
   reason: string
 ): Promise<{ success: boolean; notifications: NotificationAlert[] }> {
-  const res = await fetch(`${API_BASE}/api/doctors/${doctorId}/delay`, {
+  const res = await fetch(apiUrl(`/api/doctors/${doctorId}/delay`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ doctor_id: doctorId, delay_minutes: delayMinutes, reason }),
@@ -203,7 +246,7 @@ export async function reportDoctorDelay(
 }
 
 export async function resumeDoctorQueue(doctorId: string): Promise<{ success: boolean; notifications: NotificationAlert[] }> {
-  const res = await fetch(`${API_BASE}/api/doctors/${doctorId}/resume`, {
+  const res = await fetch(apiUrl(`/api/doctors/${doctorId}/resume`), {
     method: "POST",
   });
   return handleResponse(res);
@@ -218,7 +261,7 @@ export async function triggerEmergencyPreemption(data: {
   doctor_id?: string;
   symptoms?: string;
 }): Promise<{ token: Token; notifications: NotificationAlert[] }> {
-  const res = await fetch(`${API_BASE}/api/queue/emergency-preempt`, {
+  const res = await fetch(apiUrl("/api/queue/emergency-preempt"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -234,38 +277,38 @@ export async function triggerEmergencyPreemption(data: {
 }
 
 export async function markTokenMissed(tokenId: string): Promise<{ success: boolean; notification: NotificationAlert | null }> {
-  const res = await fetch(`${API_BASE}/api/tokens/${tokenId}/missed`, {
+  const res = await fetch(apiUrl(`/api/tokens/${tokenId}/missed`), {
     method: "POST",
   });
   return handleResponse(res);
 }
 
 export async function recallToken(tokenId: string): Promise<{ success: boolean; token: Token }> {
-  const res = await fetch(`${API_BASE}/api/tokens/${tokenId}/recall`, {
+  const res = await fetch(apiUrl(`/api/tokens/${tokenId}/recall`), {
     method: "POST",
   });
   return handleResponse(res);
 }
 
 export async function getNotifications(limit: number = 30): Promise<NotificationAlert[]> {
-  const res = await fetch(`${API_BASE}/api/notifications?limit=${limit}`, { cache: "no-store" });
+  const res = await fetch(apiUrl(`/api/notifications?limit=${limit}`), { cache: "no-store" });
   return handleResponse<NotificationAlert[]>(res);
 }
 
 export async function getStats(): Promise<QueueStats> {
-  const res = await fetch(`${API_BASE}/api/stats`, { cache: "no-store" });
+  const res = await fetch(apiUrl("/api/stats"), { cache: "no-store" });
   return handleResponse<QueueStats>(res);
 }
 
 export async function seedSimulation(): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${API_BASE}/api/simulation/seed`, {
+  const res = await fetch(apiUrl("/api/simulation/seed"), {
     method: "POST",
   });
   return handleResponse(res);
 }
 
 export async function resetSimulation(): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${API_BASE}/api/simulation/reset`, {
+  const res = await fetch(apiUrl("/api/simulation/reset"), {
     method: "POST",
   });
   return handleResponse(res);
@@ -277,12 +320,21 @@ export async function loginUser(
   password: string,
   role?: UserRole
 ): Promise<AuthResponse> {
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identifier, password, role }),
-  });
-  return handleResponse<AuthResponse>(res);
+  const targetUrl = apiUrl("/api/auth/login");
+  try {
+    const res = await fetch(targetUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier, password, role }),
+    });
+    return await handleResponse<AuthResponse>(res);
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    if (errorMsg.includes("Failed to fetch") || errorMsg.includes("NetworkError")) {
+      throw new Error(`Unable to reach backend at ${targetUrl}. If using Render free tier, server may be waking up (~30s), or check your backend URL.`);
+    }
+    throw err;
+  }
 }
 
 export async function registerUser(data: {
@@ -294,16 +346,25 @@ export async function registerUser(data: {
   department_id?: string;
   room_number?: string;
 }): Promise<AuthResponse> {
-  const res = await fetch(`${API_BASE}/api/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  return handleResponse<AuthResponse>(res);
+  const targetUrl = apiUrl("/api/auth/register");
+  try {
+    const res = await fetch(targetUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return await handleResponse<AuthResponse>(res);
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    if (errorMsg.includes("Failed to fetch") || errorMsg.includes("NetworkError")) {
+      throw new Error(`Unable to reach backend at ${targetUrl}. Please check backend connection.`);
+    }
+    throw err;
+  }
 }
 
 export async function getCurrentUser(token: string): Promise<User> {
-  const res = await fetch(`${API_BASE}/api/auth/me`, {
+  const res = await fetch(apiUrl("/api/auth/me"), {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
@@ -314,7 +375,7 @@ export async function getPatientTokens(userId?: string, phone?: string): Promise
   const params = new URLSearchParams();
   if (userId) params.append("user_id", userId);
   if (phone) params.append("phone", phone);
-  const res = await fetch(`${API_BASE}/api/patient/tokens?${params.toString()}`, { cache: "no-store" });
+  const res = await fetch(apiUrl(`/api/patient/tokens?${params.toString()}`), { cache: "no-store" });
   return handleResponse<Token[]>(res);
 }
 
@@ -331,11 +392,11 @@ export interface FirebaseStatusInfo {
 }
 
 export async function getFirebaseStatus(): Promise<FirebaseStatusInfo> {
-  const res = await fetch(`${API_BASE}/api/firebase/status`, { cache: "no-store" });
+  const res = await fetch(apiUrl("/api/firebase/status"), { cache: "no-store" });
   return handleResponse<FirebaseStatusInfo>(res);
 }
 
 export async function syncFirebase(): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${API_BASE}/api/firebase/sync`, { method: "POST" });
+  const res = await fetch(apiUrl("/api/firebase/sync"), { method: "POST" });
   return handleResponse<{ success: boolean; message: string }>(res);
 }
