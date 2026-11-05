@@ -1,0 +1,11 @@
+{
+  "python.defaultInterpreterPath": "C:\\Users\\syamk\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/backend",
+    "C:\\Users\\syamk\\AppData\\Local\\Programs\\Python\\Python310\\Lib\\site-packages"
+  ],
+  "python.autoComplete.extraPaths": [
+    "${workspaceFolder}/backend",
+    "C:\\Users\\syamk\\AppData\\Local\\Programs\\Python\\Python310\\Lib\\site-packages"
+  ]
+}
